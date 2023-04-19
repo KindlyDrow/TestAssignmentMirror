@@ -7,21 +7,6 @@ using UnityEngine.SceneManagement;
 public class MyNetworkRoomManager : NetworkRoomManager
 {
     public bool isFirstTime = true;
-    //[Command(requiresAuthority =false)]
-    //public void RestartScene()
-    //{
-    //    ServerChangeScene(GetGameScene());
-    //}
-
-    //public string GetGameScene()
-    //{
-    //    return  GameplayScene;
-    //}
-
-    //public override void ServerChangeScene(string newSceneName)
-    //{
-    //    base.ServerChangeScene(newSceneName);
-    //}
 
     public override void OnServerAddPlayer(NetworkConnectionToClient conn)
     {
