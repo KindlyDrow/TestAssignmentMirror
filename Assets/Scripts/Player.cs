@@ -2,6 +2,7 @@ using Mirror;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 public class Player : NetworkBehaviour
 {
@@ -14,9 +15,9 @@ public class Player : NetworkBehaviour
     [SerializeField] private Color _damagedColor;
     [SerializeField] private MeshRenderer _bodyRenderer;
     private Material _mainMaterial;
-    [SyncVar]
+    [SyncVar(hook = nameof(SetPlayerScore))]
     private int _playerScore;
-    [SyncVar]
+    [SyncVar(hook = nameof(SetPlayerName))]
     private string _playerName;
 
 
@@ -28,6 +29,7 @@ public class Player : NetworkBehaviour
 
     private bool isDashStarted = false;
     private bool isDashInProgress = false;
+    private Dictionary<string, bool> DashedRecentlyDictionary;
 
     [SyncVar(hook = nameof(SetDamaged))]
     public bool _isDamaged  = false;
@@ -36,13 +38,10 @@ public class Player : NetworkBehaviour
 
     private Rigidbody _playerRb;
     private CapsuleCollider _capsuleCollider;
+    private bool isMove;
 
     private void Awake()
     {
-        if (isLocalPlayer) 
-        { 
-            LocalInstance = this; 
-        }
 
         _mainMaterial = _bodyRenderer.material;
         _defaultColor = _mainMaterial.color;
@@ -50,13 +49,41 @@ public class Player : NetworkBehaviour
         _capsuleCollider = GetComponent<CapsuleCollider>();
     }
 
-    private void Start()
+    public override void OnStartLocalPlayer()
     {
-        if (!isLocalPlayer) return;
-        
+        DashedRecentlyDictionary = new Dictionary<string, bool>();
+        DashedRecentlyDictionary.Clear();
+        if (isLocalPlayer)
+        {
+            LocalInstance = this;
+        }
         GameInput.Instance.OnDashPerfomed += GameInput_OnDashPerfomed;
         _playerScore = 0;
-        _playerName = ($"Player{Random.Range(1, 9999)}");
+        CmdSetPlayerScore(_playerScore);
+        CmdSetPlayerName(($"Player{Random.Range(1, 9999)}"));
+    }
+
+    [Command(requiresAuthority = false)]
+    private void CmdSetPlayerScore(int playerScore)
+    {
+        _playerScore = playerScore;
+    }
+
+    private void SetPlayerScore(int oldScore, int newScore)
+    {
+        _playerScore = newScore;
+        
+    }
+
+    [Command(requiresAuthority = false)]
+    private void CmdSetPlayerName(string playerName)
+    {
+        _playerName = playerName;
+    }
+
+    private void SetPlayerName(string oldValue, string newValue)
+    {
+        _playerName = newValue;
         GameManager.Instance.CmdChangePlayersScore(_playerName, _playerScore);
     }
 
@@ -73,7 +100,11 @@ public class Player : NetworkBehaviour
     private void FixedUpdate()
     {
         if (!isLocalPlayer) return;
-        if (!isDashStarted) HandleMovement();
+        if (!isDashStarted)
+        {
+            HandleMovement();
+            HandleRotation();
+        }
     }
 
     // If wanna damaged do damag
@@ -91,7 +122,6 @@ public class Player : NetworkBehaviour
     //        }
     //    }
     //}
-
     private void OnCollisionEnter(Collision collision)
     {
         if (!isLocalPlayer) return;
@@ -100,16 +130,29 @@ public class Player : NetworkBehaviour
             Player collisionPlayer = collision.gameObject.GetComponent<Player>();
             if (!collisionPlayer._isDamaged)
             {
+                foreach (string name in DashedRecentlyDictionary.Keys)
+                {
+                    if (collisionPlayer._playerName == name) return;
+                }
+                DashedRecentlyDictionary.Add(collisionPlayer._playerName, true);
+                StartCoroutine(SetDashedRecentlyPlayerNameToFalse(collisionPlayer._playerName, _damagedTime));
                 collisionPlayer.GetDashed();
                 ChangePlayerScore(1);
             }
         }
+    }
 
+    IEnumerator SetDashedRecentlyPlayerNameToFalse(string name, float time)
+    {
+        yield return new WaitForSeconds(time);
+
+        DashedRecentlyDictionary.Remove(name);
     }
 
     private void ChangePlayerScore(int score)
     {
         _playerScore += score;
+        CmdSetPlayerScore(_playerScore);
         GameManager.Instance.CmdChangePlayersScore(_playerName, _playerScore);
     }
 
@@ -165,10 +208,25 @@ public class Player : NetworkBehaviour
         Vector3 moveDir = new Vector3(inputVector.x, 0f, inputVector.y);
 
         if (moveDir != Vector3.zero) 
-        { 
-            _playerRb.velocity = (moveDir * Time.deltaTime * _moveSpeed); 
+        {
+            Vector3 direction = transform.TransformDirection(moveDir);
+            _playerRb.velocity = (direction * Time.deltaTime * _moveSpeed);
+            isMove = true;
+        } else
+        {
+            isMove = false;
         }
 
+    }
+
+    private void HandleRotation()
+    {
+        // Получаем позицию камеры и убираем ее y-координату, чтобы персонаж смотрел на нее только по оси Y
+        Vector3 lookAtPosition = new Vector3(Camera.main.transform.position.x, transform.position.y, Camera.main.transform.position.z);
+
+        // Поворачиваем персонажа, чтобы он смотрел на позицию камеры
+        transform.LookAt(lookAtPosition);
+        transform.Rotate(0f, 180f, 0f);
     }
 
     private IEnumerator StartDash(float dashPrepTime, float dashTime, float dashForce)
@@ -177,9 +235,9 @@ public class Player : NetworkBehaviour
 
         isDashInProgress = true;
 
-        Vector3 forceDir = GetMouseVectorNormalized();
+        //Vector3 forceDir = GetMouseVectorNormalized();
 
-        _playerRb.AddForce(forceDir * dashForce, ForceMode.Impulse);
+        _playerRb.AddForce(transform.forward * dashForce, ForceMode.Impulse);
 
         yield return new WaitForSeconds(dashTime / 10);
 
@@ -197,6 +255,11 @@ public class Player : NetworkBehaviour
         Vector3 forceDir = (mousePosition - transform.position).normalized;
 
         return forceDir;
+    }
+
+    public bool GetPlayerMove()
+    {
+        return isMove;
     }
 
     private void OnDestroy()

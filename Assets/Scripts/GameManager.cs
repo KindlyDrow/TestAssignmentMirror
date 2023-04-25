@@ -63,6 +63,7 @@ public class GameManager : NetworkBehaviour
     [Command(requiresAuthority = false)]
     private void CmdRestartScene()
     {
+        playersScoreDictionary.Reset();
         MyNetworkRoomManager.singleton.Reset();
         MyNetworkRoomManager.singleton.ServerChangeScene(SceneManager.GetActiveScene().name);
     }
