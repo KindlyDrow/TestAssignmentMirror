@@ -221,10 +221,8 @@ public class Player : NetworkBehaviour
 
     private void HandleRotation()
     {
-        // Получаем позицию камеры и убираем ее y-координату, чтобы персонаж смотрел на нее только по оси Y
         Vector3 lookAtPosition = new Vector3(Camera.main.transform.position.x, transform.position.y, Camera.main.transform.position.z);
 
-        // Поворачиваем персонажа, чтобы он смотрел на позицию камеры
         transform.LookAt(lookAtPosition);
         transform.Rotate(0f, 180f, 0f);
     }
